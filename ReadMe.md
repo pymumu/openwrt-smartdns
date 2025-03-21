@@ -23,12 +23,15 @@ make menuconfig
 ```
 
 * 选择路径：
- Network > smartdns
+
+ Network > smartdns  
+ Network > smartdns-ui  
 
 * 编译模式：
 
 1. 若编译独立软件包，选择编译模式为`M`
 1. 若编译到固件中，选择编译模式为`*`
+1. UI为单独安装包，需要选择后才能编译。
 
 ### 执行openwrt编译
 
