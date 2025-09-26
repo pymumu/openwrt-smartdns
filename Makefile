@@ -106,7 +106,7 @@ endef
 define Build/Compile/smartdns-ui
 	cargo install --force --locked bindgen-cli
 	CARGO_BUILD_ARGS="$(if $(strip $(RUST_PKG_FEATURES)),--features "$(strip $(RUST_PKG_FEATURES))") --profile $(CARGO_PKG_PROFILE)"
-	+$(CARGO_PKG_VARS) CARGO_BUILD_ARGS="$(CARGO_BUILD_ARGS)" CC=$(TARGET_CC) \
+	+$(CARGO_PKG_VARS) CARGO_BUILD_ARGS="$(CARGO_BUILD_ARGS)" CC=$(TARGET_CC) CFLAGS="-O0" \
 	PATH="$$(PATH):$(CARGO_HOME)/bin" \
 	make -C $(PKG_BUILD_DIR)/plugin/smartdns-ui
 endef
