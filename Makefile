@@ -30,7 +30,7 @@ PKG_BUILD_PARALLEL:=1
 # PACKAGE_smartdns-ui:node/host
 PKG_BUILD_DEPENDS:=PACKAGE_smartdns-ui:rust/host 
 
-include ../../lang/rust/rust-package.mk
+include $(TOPDIR)/feeds/packages/lang/rust/rust-package.mk
 include $(INCLUDE_DIR)/package.mk
 
 MAKE_VARS += VER=$(PKG_VERSION) 
@@ -116,7 +116,7 @@ define Download/smartdns-webui
 	FILE:=$(SMARTDNS_WEBUI_FILE)
 	PROTO:=$(SMARTDNS_WEBUI_SOURCE_PROTO)
 	URL:=$(SMARTDNS_WEBUI_SOURCE_URL)
-	MIRROR_HASH:=a1dd57a20ac5af4651bc77bbc7d850a46f9b81b7e26791d62c90156767044dd6
+	MIRROR_HASH:=42e280cbfc168f88690652b85ce919c2aeedc9ef7c4b55122742e484b23492cd
 	VERSION:=$(SMARTDNS_WEBUI_SOURCE_VERSION)
 	HASH:=$(SMARTDNS_WEBUI_HASH)
 	SUBDIR:=smartdns-webui
