@@ -23,8 +23,8 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential jq curl perl python3-distutils unzip zlib1g-dev
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install build-essential jq curl perl python3-distutils unzip zlib1g-dev
 
       - name: Fetch Latest Commits and Update Makefile
         working-directory: my-repo
