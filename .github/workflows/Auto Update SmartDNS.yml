@@ -1,0 +1,103 @@
+name: Auto Update SmartDNS
+
+on:
+  schedule:
+    - cron: "0 */4 * * *" # 每4小时运行一次
+  workflow_dispatch:    # 允许手动触发
+
+jobs:
+  update-code:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          path: my-repo
+
+      - name: Checkout OpenWrt source
+        uses: actions/checkout@v6
+        with:
+          repository: openwrt/openwrt
+          path: openwrt
+          depth: 1
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential jq curl perl python3-distutils unzip zlib1g-dev
+
+      - name: Fetch Latest Commits and Update Makefile
+        working-directory: my-repo
+        run: |
+          LATEST_SMARTDNS=$(curl -sL https://api.github.com/repos/pymumu/smartdns/commits/master | jq -r .sha)
+          LATEST_WEBUI=$(curl -sL https://api.github.com/repos/pymumu/smartdns-webui/commits/master | jq -r .sha)
+          
+          if [ -z "$LATEST_SMARTDNS" ] || [ "$LATEST_SMARTDNS" == "null" ]; then
+            echo "Failed to fetch SmartDNS commit"
+            exit 1
+          fi
+          
+          sed -i "s/^PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=$LATEST_SMARTDNS/g" Makefile
+          sed -i "s/^SMARTDNS_WEBUI_SOURCE_VERSION:=.*/SMARTDNS_WEBUI_SOURCE_VERSION:=$LATEST_WEBUI/g" Makefile
+          
+          sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=/g' Makefile
+          sed -i 's/^[[:space:]]*MIRROR_HASH:=.*/\tMIRROR_HASH:=/g' Makefile
+          
+          echo "Updated Makefile with new Commits and cleared Hashes."
+
+      - name: Calculate and Fix Hashes in OpenWrt Env
+        working-directory: openwrt
+        run: |
+          mkdir -p package/custom_packages
+          cp -r ../my-repo package/custom_packages/openwrt-smartdns
+          
+          ./scripts/feeds update -a > /dev/null
+          ./scripts/feeds install -a > /dev/null
+          make defconfig > /dev/null
+          
+          make package/custom_packages/openwrt-smartdns/download V=s
+          make package/custom_packages/openwrt-smartdns/check FIXUP=1 V=s
+          
+          cp package/custom_packages/openwrt-smartdns/Makefile ../my-repo/Makefile
+
+      - name: Commit and Push with Retry Strategy
+        working-directory: my-repo
+        run: |
+          git checkout -b temp-update
+          git add Makefile
+
+          if ! git diff --cached --quiet; then
+            git config user.name "smallprogram"
+            git config user.email "smallprogram@foxmail.com"
+            git commit -m "chore: auto update smartdns and webui versions and hashes"
+
+            MAX_RETRIES=10
+            RETRY_COUNT=0
+            
+            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+              git checkout ${{ github.ref_name }}
+              git fetch origin ${{ github.ref_name }}
+              git reset --hard origin/${{ github.ref_name }}
+              
+              git merge temp-update --strategy-option theirs --no-edit
+              
+              if git push origin ${{ github.ref_name }}; then
+                echo "Push successful!"
+                break
+              else
+                echo "Push failed due to concurrent update. Retrying in a few seconds..."
+                git reset --hard HEAD~1
+                RETRY_COUNT=$((RETRY_COUNT+1))
+                sleep $((RANDOM % 5 + 3))
+              fi
+            done
+            
+            if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+              echo "Failed to push after $MAX_RETRIES attempts."
+              exit 100
+            fi
+
+            git branch -D temp-update || echo "Local temp branch not found"
+          else
+            echo "No changes to commit. Upstream hasn't updated."
+          fi
