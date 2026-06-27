@@ -3,14 +3,17 @@ name: Auto Update SmartDNS
 on:
   schedule:
     - cron: "0 */4 * * *" # 每4小时运行一次
-  workflow_dispatch:    # 允许手动触发
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
-  update-code:
+  update-smartdns-hash:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: my-repo
 
@@ -51,6 +54,8 @@ jobs:
           mkdir -p package/custom_packages
           cp -r ../my-repo package/custom_packages/openwrt-smartdns
           
+          sed -i '/^#/d' feeds.conf.default
+          sed -i -e 's|git.openwrt.org/feed|github.com/openwrt|g' -e 's|git.openwrt.org/project|github.com/openwrt|g' feeds.conf.default
           ./scripts/feeds update -a > /dev/null
           ./scripts/feeds install -a > /dev/null
           make defconfig > /dev/null
