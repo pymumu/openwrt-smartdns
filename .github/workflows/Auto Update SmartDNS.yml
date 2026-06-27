@@ -22,7 +22,6 @@ jobs:
         with:
           repository: openwrt/openwrt
           path: openwrt
-          depth: 1
 
       - name: Install Dependencies
         run: |
