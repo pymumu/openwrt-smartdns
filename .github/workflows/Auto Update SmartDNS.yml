@@ -24,7 +24,7 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo -E apt-get -qq update
-          sudo -E apt-get -qq install build-essential jq curl perl python3-distutils unzip zlib1g-dev
+          sudo -E apt-get -qq install $(curl -fsSL https://github.com/smallprogram/OpenWrtAction/raw/main/diy_script/openwrt_dependence)
 
       - name: Fetch Latest Commits and Update Makefile
         working-directory: my-repo
