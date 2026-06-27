@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "0 */4 * * *" # 每4小时运行一次
   workflow_dispatch:
+    inputs:
+      update_commits:
+        description: '同时更新源码版本 (Commit SHA) 和 Hash'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -31,21 +37,30 @@ jobs:
       - name: Fetch Latest Commits and Update Makefile
         working-directory: my-repo
         run: |
-          LATEST_SMARTDNS=$(curl -sL https://api.github.com/repos/pymumu/smartdns/commits/master | jq -r .sha)
-          LATEST_WEBUI=$(curl -sL https://api.github.com/repos/pymumu/smartdns-webui/commits/main | jq -r .sha)
 
-          if [ -z "$LATEST_SMARTDNS" ] || [ "$LATEST_SMARTDNS" == "null" ]; then
-            echo "Failed to fetch SmartDNS commit"
-            exit 1
-          fi
+          UPDATE_COMMITS="${{ github.event.inputs.update_commits }}"
           
-          sed -i "s/^PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=$LATEST_SMARTDNS/g" Makefile
-          sed -i "s/^SMARTDNS_WEBUI_SOURCE_VERSION:=.*/SMARTDNS_WEBUI_SOURCE_VERSION:=$LATEST_WEBUI/g" Makefile
+          if [ "$UPDATE_COMMITS" == "true" ]; then
+            echo ">> 更新全部 4 个hash值，正在抓取最新 Commit..."
+            LATEST_SMARTDNS=$(curl -sL https://api.github.com/repos/pymumu/smartdns/commits/master | jq -r .sha)
+            LATEST_WEBUI=$(curl -sL https://api.github.com/repos/pymumu/smartdns-webui/commits/main | jq -r .sha)
+
+            if [ -z "$LATEST_SMARTDNS" ] || [ "$LATEST_SMARTDNS" == "null" ]; then
+              echo "Failed to fetch SmartDNS commit"
+              exit 1
+            fi
+            
+            sed -i "s/^PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=$LATEST_SMARTDNS/g" Makefile
+            sed -i "s/^SMARTDNS_WEBUI_SOURCE_VERSION:=.*/SMARTDNS_WEBUI_SOURCE_VERSION:=$LATEST_WEBUI/g" Makefile
+            echo "✅ 成功更新 SOURCE_VERSION."
+          else
+            echo ">> 默认模式: 保持现有的 SOURCE_VERSION，仅更新 Hash."
+          fi
           
           sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=/g' Makefile
           sed -i 's/^[[:space:]]*MIRROR_HASH:=.*/\tMIRROR_HASH:=/g' Makefile
           
-          echo "Updated Makefile with new Commits and cleared Hashes."
+          echo "✅ 成功清空 MIRROR_HASH."
 
       - name: Calculate and Fix Hashes in OpenWrt Env
         working-directory: openwrt
@@ -103,5 +118,5 @@ jobs:
 
             git branch -D temp-update || echo "Local temp branch not found"
           else
-            echo "No changes to commit. Upstream hasn't updated."
+            echo "No changes to commit. Upstream hasn't updated or hashes are unchanged."
           fi
