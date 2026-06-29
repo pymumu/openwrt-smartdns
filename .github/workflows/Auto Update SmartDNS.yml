@@ -45,6 +45,9 @@ jobs:
           # 1. 获取 SmartDNS 最新 Release Tag
           LATEST_TAG=$(curl -sL https://api.github.com/repos/pymumu/smartdns/releases/latest | jq -r .tag_name)
           
+          # 过滤掉开头的英文字符，按照openwrt规定
+          CLEAN_VERSION=$(echo "$LATEST_TAG" | sed 's/^[a-zA-Z_]*//')
+
           # 获取该 Tag 对应的准确 Commit SHA
           LATEST_SMARTDNS=$(curl -sL "https://api.github.com/repos/pymumu/smartdns/commits/$LATEST_TAG" | jq -r .sha)
           
@@ -61,10 +64,11 @@ jobs:
           fi
           
           echo ">> 获取到 SmartDNS 最新版本: $LATEST_TAG (Commit: $LATEST_SMARTDNS)"
+          echo ">> 提取到合法数字版本号: $CLEAN_VERSION (原始Tag: $LATEST_TAG)"
           echo ">> 获取到 WebUI 最新 Commit: $LATEST_WEBUI"
           
           # 4. 直接使用 Tag 作为 PKG_VERSION 更新 Makefile
-          sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=$LATEST_TAG/g" Makefile
+          sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=$CLEAN_VERSION/g" Makefile
           sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" Makefile
           sed -i "s/^PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=$LATEST_SMARTDNS/g" Makefile
           sed -i "s/^SMARTDNS_WEBUI_SOURCE_VERSION:=.*/SMARTDNS_WEBUI_SOURCE_VERSION:=$LATEST_WEBUI/g" Makefile
