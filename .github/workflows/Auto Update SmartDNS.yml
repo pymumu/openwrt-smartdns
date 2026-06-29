@@ -1,0 +1,137 @@
+name: Auto Update SmartDNS
+
+on:
+  schedule:
+    - cron: "0 */4 * * *" # 每4小时运行一次
+  workflow_dispatch:
+    # inputs:
+    #   update_commits:
+    #     description: '同时更新 SmartDNS 最新 Release 版本及 WebUI Commit'
+    #     required: false
+    #     default: false
+    #     type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  update-smartdns-hash:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          path: my-repo
+
+      - name: Checkout OpenWrt source
+        uses: actions/checkout@v6
+        with:
+          repository: openwrt/openwrt
+          path: openwrt
+
+      - name: Fetch Latest Release and Update Makefile
+        working-directory: my-repo
+        run: |
+          UPDATE_COMMITS="${{ github.event.inputs.update_commits }}"
+          
+
+          echo ">> 用户选择了更新全部参数，正在抓取最新的 Release 和 Commit..."
+          
+          # 1. 获取 SmartDNS 最新 Release Tag
+          LATEST_TAG=$(curl -sL https://api.github.com/repos/pymumu/smartdns/releases/latest | jq -r .tag_name)
+          
+          # 过滤掉开头的英文字符，按照openwrt规定
+          CLEAN_VERSION=$(echo "$LATEST_TAG" | sed 's/^[a-zA-Z_]*//')
+
+          # 获取该 Tag 对应的准确 Commit SHA
+          LATEST_SMARTDNS=$(curl -sL "https://api.github.com/repos/pymumu/smartdns/commits/$LATEST_TAG" | jq -r .sha)
+          
+          # 2. 获取 WebUI 的最新 Commit 
+          LATEST_WEBUI=$(curl -sL https://api.github.com/repos/pymumu/smartdns-webui/commits | jq -r '.[0].sha')
+
+          # 3. 严格的安全校验
+          if [ -z "$LATEST_SMARTDNS" ] || [ "$LATEST_SMARTDNS" == "null" ] || \
+              [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" == "null" ] || \
+              [ -z "$LATEST_WEBUI" ] || [ "$LATEST_WEBUI" == "null" ]; then
+            echo "❌ 错误: 无法获取到完整的版本数据，请检查网络或 API 限制。"
+            echo "DEBUG INFO -> TAG: $LATEST_TAG, DNS_SHA: $LATEST_SMARTDNS, WEBUI_SHA: $LATEST_WEBUI"
+            exit 1
+          fi
+          
+          echo ">> 获取到 SmartDNS 最新版本: $LATEST_TAG (Commit: $LATEST_SMARTDNS)"
+          echo ">> 提取到合法数字版本号: $CLEAN_VERSION (原始Tag: $LATEST_TAG)"
+          echo ">> 获取到 WebUI 最新 Commit: $LATEST_WEBUI"
+          
+          # 4. 直接使用 Tag 作为 PKG_VERSION 更新 Makefile
+          sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=$CLEAN_VERSION/g" Makefile
+          sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" Makefile
+          sed -i "s/^PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=$LATEST_SMARTDNS/g" Makefile
+          sed -i "s/^SMARTDNS_WEBUI_SOURCE_VERSION:=.*/SMARTDNS_WEBUI_SOURCE_VERSION:=$LATEST_WEBUI/g" Makefile
+          
+          echo "✅ 成功更新 VERSION, RELEASE 和 SOURCE_VERSION."
+
+          
+          # 清空 Hash 以便后续重新计算
+          sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=/g' Makefile
+          sed -i 's/^[[:space:]]*MIRROR_HASH:=.*/\tMIRROR_HASH:=/g' Makefile
+          
+          echo "✅ 成功清空 MIRROR_HASH."
+
+      - name: Calculate and Fix Hashes in OpenWrt Env
+        working-directory: openwrt
+        run: |
+          mkdir -p package/custom_packages
+          cp -r ../my-repo package/custom_packages/openwrt-smartdns
+          
+          sed -i '/^#/d' feeds.conf.default
+          sed -i -e 's|git.openwrt.org/feed|github.com/openwrt|g' -e 's|git.openwrt.org/project|github.com/openwrt|g' feeds.conf.default
+          ./scripts/feeds update -a > /dev/null
+          ./scripts/feeds install -a > /dev/null
+          make defconfig > /dev/null
+          
+          make package/custom_packages/openwrt-smartdns/download V=s
+          make package/custom_packages/openwrt-smartdns/check FIXUP=1 V=s
+          
+          cp package/custom_packages/openwrt-smartdns/Makefile ../my-repo/Makefile
+
+      - name: Commit and Push with Retry Strategy
+        working-directory: my-repo
+        run: |
+          git checkout -b temp-update
+          git add Makefile
+
+          if ! git diff --cached --quiet; then
+            git config user.name "smallprogram"
+            git config user.email "smallprogram@foxmail.com"
+            git commit -m "chore: auto update smartdns and webui versions and hashes"
+
+            MAX_RETRIES=10
+            RETRY_COUNT=0
+            
+            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+              git checkout ${{ github.ref_name }}
+              git fetch origin ${{ github.ref_name }}
+              git reset --hard origin/${{ github.ref_name }}
+              
+              git merge temp-update --strategy-option theirs --no-edit
+              
+              if git push origin ${{ github.ref_name }}; then
+                echo "Push successful!"
+                break
+              else
+                echo "Push failed due to concurrent update. Retrying in a few seconds..."
+                git reset --hard HEAD~1
+                RETRY_COUNT=$((RETRY_COUNT+1))
+                sleep $((RANDOM % 5 + 3))
+              fi
+            done
+            
+            if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+              echo "Failed to push after $MAX_RETRIES attempts."
+              exit 100
+            fi
+
+            git branch -D temp-update || echo "Local temp branch not found"
+          else
+            echo "No changes to commit. Upstream hasn't updated or hashes are unchanged."
+          fi
