@@ -4,12 +4,12 @@ on:
   schedule:
     - cron: "0 */4 * * *" # 每4小时运行一次
   workflow_dispatch:
-    inputs:
-      update_commits:
-        description: '同时更新 SmartDNS 最新 Release 版本及 WebUI Commit'
-        required: false
-        default: false
-        type: boolean
+    # inputs:
+    #   update_commits:
+    #     description: '同时更新 SmartDNS 最新 Release 版本及 WebUI Commit'
+    #     required: false
+    #     default: false
+    #     type: boolean
 
 permissions:
   contents: write
@@ -39,42 +39,40 @@ jobs:
         run: |
           UPDATE_COMMITS="${{ github.event.inputs.update_commits }}"
           
-          if [ "$UPDATE_COMMITS" == "true" ]; then
-            echo ">> 用户选择了更新全部参数，正在抓取最新的 Release 和 Commit..."
-            
-            # 1. 获取 SmartDNS 最新 Release Tag
-            LATEST_TAG=$(curl -sL https://api.github.com/repos/pymumu/smartdns/releases/latest | jq -r .tag_name)
-            
-            # 获取该 Tag 对应的准确 Commit SHA
-            LATEST_SMARTDNS=$(curl -sL "https://api.github.com/repos/pymumu/smartdns/commits/$LATEST_TAG" | jq -r .sha)
-            
-            # 2. 获取 WebUI 的最新 Commit 
-            LATEST_WEBUI=$(curl -sL https://api.github.com/repos/pymumu/smartdns-webui/commits | jq -r '.[0].sha')
 
-            # 3. 严格的安全校验
-            if [ -z "$LATEST_SMARTDNS" ] || [ "$LATEST_SMARTDNS" == "null" ] || \
-               [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" == "null" ] || \
-               [ -z "$LATEST_WEBUI" ] || [ "$LATEST_WEBUI" == "null" ]; then
-              echo "❌ 错误: 无法获取到完整的版本数据，请检查网络或 API 限制。"
-              echo "DEBUG INFO -> TAG: $LATEST_TAG, DNS_SHA: $LATEST_SMARTDNS, WEBUI_SHA: $LATEST_WEBUI"
-              exit 1
-            fi
-            
-            echo ">> 获取到 SmartDNS 最新版本: $LATEST_TAG (Commit: $LATEST_SMARTDNS)"
-            echo ">> 获取到 WebUI 最新 Commit: $LATEST_WEBUI"
-            
-            # 4. 直接使用 Tag 作为 PKG_VERSION 更新 Makefile
-            sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=$LATEST_TAG/g" Makefile
-            sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" Makefile
-            sed -i "s/^PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=$LATEST_SMARTDNS/g" Makefile
-            sed -i "s/^SMARTDNS_WEBUI_SOURCE_VERSION:=.*/SMARTDNS_WEBUI_SOURCE_VERSION:=$LATEST_WEBUI/g" Makefile
-            
-            echo "✅ 成功更新 VERSION, RELEASE 和 SOURCE_VERSION."
-          else
-            echo ">> 默认模式: 保持现有的 VERSION 和 SOURCE_VERSION，仅更新 Hash."
+          echo ">> 用户选择了更新全部参数，正在抓取最新的 Release 和 Commit..."
+          
+          # 1. 获取 SmartDNS 最新 Release Tag
+          LATEST_TAG=$(curl -sL https://api.github.com/repos/pymumu/smartdns/releases/latest | jq -r .tag_name)
+          
+          # 获取该 Tag 对应的准确 Commit SHA
+          LATEST_SMARTDNS=$(curl -sL "https://api.github.com/repos/pymumu/smartdns/commits/$LATEST_TAG" | jq -r .sha)
+          
+          # 2. 获取 WebUI 的最新 Commit 
+          LATEST_WEBUI=$(curl -sL https://api.github.com/repos/pymumu/smartdns-webui/commits | jq -r '.[0].sha')
+
+          # 3. 严格的安全校验
+          if [ -z "$LATEST_SMARTDNS" ] || [ "$LATEST_SMARTDNS" == "null" ] || \
+              [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" == "null" ] || \
+              [ -z "$LATEST_WEBUI" ] || [ "$LATEST_WEBUI" == "null" ]; then
+            echo "❌ 错误: 无法获取到完整的版本数据，请检查网络或 API 限制。"
+            echo "DEBUG INFO -> TAG: $LATEST_TAG, DNS_SHA: $LATEST_SMARTDNS, WEBUI_SHA: $LATEST_WEBUI"
+            exit 1
           fi
           
-          # 无论哪种模式，都清空 Hash 以便后续重新计算
+          echo ">> 获取到 SmartDNS 最新版本: $LATEST_TAG (Commit: $LATEST_SMARTDNS)"
+          echo ">> 获取到 WebUI 最新 Commit: $LATEST_WEBUI"
+          
+          # 4. 直接使用 Tag 作为 PKG_VERSION 更新 Makefile
+          sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=$LATEST_TAG/g" Makefile
+          sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/g" Makefile
+          sed -i "s/^PKG_SOURCE_VERSION:=.*/PKG_SOURCE_VERSION:=$LATEST_SMARTDNS/g" Makefile
+          sed -i "s/^SMARTDNS_WEBUI_SOURCE_VERSION:=.*/SMARTDNS_WEBUI_SOURCE_VERSION:=$LATEST_WEBUI/g" Makefile
+          
+          echo "✅ 成功更新 VERSION, RELEASE 和 SOURCE_VERSION."
+
+          
+          # 清空 Hash 以便后续重新计算
           sed -i 's/^PKG_MIRROR_HASH:=.*/PKG_MIRROR_HASH:=/g' Makefile
           sed -i 's/^[[:space:]]*MIRROR_HASH:=.*/\tMIRROR_HASH:=/g' Makefile
           
